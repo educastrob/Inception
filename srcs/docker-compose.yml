@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: inception-nginx
+    ports:
+      - "80:80"
+      - "433:433"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - wordpress_data:/var/www/html:ro
+    depends_on:
+      - wordpress
+
+wordpress:
+  build: ./wordpress
+  container_name: inception-wordpress
+  environment:
+    WORDPRESS_DB_HOST: mariadb:3306
+    WORDPRESS_DB_USER: wp_user
+    WORPRESS_DB_PASSWORD: wp_password
+    WORDPRESS_DB_NAME: wp_db
+  volumes:
+    - wordpress_data:/var/www/html
+  depends_on:
+    - mariadb
+
+mariadb:
+  image: mariadb:10.6
+  container_name: inception-mariadb
+  restart: always
+  environment:
+    MYSQL_ROOT_PASWORD: root_password
+    MYSQL_DATABASE: wp_db
+    MYSQL_USER: wp_user
+    MYSQL_PASSWORD: wp_password
+  volumes:
+    - db_data:/var/lib/mysql
+
+volumes:
+  wordpress_data:
+  db_data:
