@@ -1,44 +1,49 @@
-version: "3.9"
-
 services:
   nginx:
-    image: nginx:stable-alpine
-    container_name: inception-nginx
+    container_name: nginx
+    build: ./requirements/nginx
+    # depends_on:
+    #   - adminer
+    #   - redis
+    #   - hugo
     ports:
-      - "80:80"
-      - "433:433"
+      - 443:443
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-      - wordpress_data:/var/www/html:ro
+      - wordpress_data:/var/www/html
+    restart: always
+    networks:
+      - network
+
+  mariadb:
+    container_name: mariadb
+    build: ./requirements/mariadb
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - network
+    restart: always
+    env_file:
+      - .env
+
+  wordpress:
+    container_name: wordpress
     depends_on:
-      - wordpress
-
-wordpress:
-  build: ./wordpress
-  container_name: inception-wordpress
-  environment:
-    WORDPRESS_DB_HOST: mariadb:3306
-    WORDPRESS_DB_USER: wp_user
-    WORPRESS_DB_PASSWORD: wp_password
-    WORDPRESS_DB_NAME: wp_db
-  volumes:
-    - wordpress_data:/var/www/html
-  depends_on:
-    - mariadb
-
-mariadb:
-  image: mariadb:10.6
-  container_name: inception-mariadb
-  restart: always
-  environment:
-    MYSQL_ROOT_PASWORD: root_password
-    MYSQL_DATABASE: wp_db
-    MYSQL_USER: wp_user
-    MYSQL_PASSWORD: wp_password
-  volumes:
-    - db_data:/var/lib/mysql
+      - mariadb
+    build:
+      context: ./requirements/wordpress
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - wordpress_data:/var/www/html
+    networks:
+      - network
 
 volumes:
   wordpress_data:
-  db_data:
+  mariadb_data:
+
+networks:
+  network:
+    driver: bridge
