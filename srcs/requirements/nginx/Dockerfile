@@ -1,4 +1,4 @@
-FROM	debian:buster
+FROM	debian:bullseye
 
 # Instala todos os programas
 RUN		apt-get update
