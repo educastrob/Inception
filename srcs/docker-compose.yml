@@ -1,49 +1,123 @@
-services:
-  nginx:
-    container_name: nginx
-    build: ./requirements/nginx
-    # depends_on:
-    #   - adminer
-    #   - redis
-    #   - hugo
-    ports:
-      - 443:443
-    volumes:
-      - wordpress_data:/var/www/html
-    restart: always
-    networks:
-      - network
+networks:
+  inception:
+    name: ${COMPOSE_PROJECT_NAME}
 
+secrets:
+  mariadb_user_password:
+    file: ../secrets/mariadb_user_password.txt
+
+  mariadb_root_password:
+    file: ../secrets/mariadb_root_password.txt
+
+  wordpress_user_password:
+    file: ../secrets/wordpress_user_password.txt
+
+  wordpress_root_password:
+    file: ../secrets/wordpress_root_password.txt
+
+services:
   mariadb:
     container_name: mariadb
-    build: ./requirements/mariadb
+    expose:
+      - ${MARIADB_PORT}
+    healthcheck:
+      test: [
+        "CMD-SHELL", 
+        "mariadb-admin ping \
+        -h$MARIADB_HOST \
+        -P$MARIADB_PORT \
+        -u$MARIADB_USER \
+        -p$$(cat /run/secrets/mariadb_user_password) \
+        --silent"
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    build:
+      context: ./requirements/mariadb
+      dockerfile: Dockerfile
+    environment:
+      MARIADB_HOST: ${MARIADB_HOST}
+      MARIADB_PORT: ${MARIADB_PORT}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+    networks:
+      - ${COMPOSE_PROJECT_NAME}
     volumes:
       - mariadb_data:/var/lib/mysql
-    networks:
-      - network
-    restart: always
-    env_file:
-      - .env
+    secrets:
+      - mariadb_user_password
+      - mariadb_root_password
+    restart: on-failure
 
   wordpress:
     container_name: wordpress
-    depends_on:
-      - mariadb
+    expose:
+      - ${WORDPRESS_PORT}
     build:
       context: ./requirements/wordpress
       dockerfile: Dockerfile
-    restart: always
-    env_file:
-      - .env
-    volumes:
-      - wordpress_data:/var/www/html
+    environment:
+      LOCAL_USER: ${LOCAL_USER}
+      MARIADB_HOST: ${MARIADB_HOST}
+      MARIADB_PORT: ${MARIADB_PORT}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      WORDPRESS_DOMAIN: ${WORDPRESS_DOMAIN}
+      WORDPRESS_PORT: ${WORDPRESS_PORT}
+      WORDPRESS_USER: ${WORDPRESS_USER}
+      WORDPRESS_USER_EMAIL: ${WORDPRESS_USER_EMAIL}
+      WORDPRESS_ROOT: ${WORDPRESS_ROOT}
+      WORDPRESS_ROOT_EMAIL: ${WORDPRESS_ROOT_EMAIL}
+    secrets:
+      - mariadb_user_password
+      - wordpress_user_password
+      - wordpress_root_password
     networks:
-      - network
+      - ${COMPOSE_PROJECT_NAME}
+    volumes:
+      - wordpress_data:/var/www/html/wordpress
+    restart: on-failure
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  nginx:
+    container_name: nginx
+    expose:
+      - ${NGINX_PORT}
+    build:
+      context: ./requirements/nginx
+      dockerfile: Dockerfile
+    environment:
+      NGINX_PORT: ${NGINX_PORT}
+      WORDPRESS_DOMAIN: ${WORDPRESS_DOMAIN}
+      WORDPRESS_HOST: ${WORDPRESS_HOST}
+      WORDPRESS_PORT: ${WORDPRESS_PORT}
+    networks:
+      - ${COMPOSE_PROJECT_NAME}
+    ports:
+      - ${NGINX_PORT}:${NGINX_PORT}
+    volumes:
+      - wordpress_data:/var/www/html/wordpress:ro
+    restart: on-failure
+    depends_on:
+      wordpress:
+        condition: service_started
+
 
 volumes:
-  wordpress_data:
   mariadb_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/${LOCAL_USER}/data/mariadb
+      o: bind
 
-networks:
-  network:
-    driver: bridge
+  wordpress_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/${LOCAL_USER}/data/wordpress
+      o: bind

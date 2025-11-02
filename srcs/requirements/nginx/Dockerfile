@@ -1,24 +1,19 @@
-FROM	debian:bullseye
+FROM alpine:3.21
 
-# Instala todos os programas
-RUN		apt-get update
-RUN		apt-get install -y nginx \
-                openssl
+RUN apk add --no-cache \
+    nginx \
+    openssl \
+    envsubst
 
-# Nginx SSL
-RUN mkdir /etc/nginx/ssl
-RUN openssl req -newkey rsa:4096 -x509 -sha256 -days 365 -nodes \
-       -out /etc/nginx/ssl/edcastro.crt \
-       -keyout /etc/nginx/ssl/edcastro.key \
-       -subj "/C=FR/ST=Paris/L=Paris/O=42 School/OU=edcastro/CN=edcastro/"
+WORKDIR /run/nginx
 
-COPY ./conf/nginx.conf /etc/nginx/conf.d
+RUN addgroup -g 1000 inception \
+    && addgroup nginx inception
 
-# Nginx config
-RUN mkdir -p /run/nginx
+COPY ./conf/nginx.conf.template /etc/nginx/
 
-# A unica porta que o nginx vai ouvir
-EXPOSE	443
+COPY ./tools/docker-entrypoint.sh /run/nginx/entrypoint.sh
 
-# Inicia nginx
-CMD ["nginx", "-g", "daemon off;"]
+RUN chmod +x /run/nginx/entrypoint.sh
+
+ENTRYPOINT ["/run/nginx/entrypoint.sh"]

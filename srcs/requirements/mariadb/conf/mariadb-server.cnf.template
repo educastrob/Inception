@@ -1,0 +1,29 @@
+[mysqld]
+user = mysql
+pid-file=/run/mysqld/mysqld.pid
+socket=/run/mysqld/mysqld.sock
+port=${MARIADB_PORT}
+basedir=/usr
+datadir=/var/lib/mysql
+tmpdir=/tmp
+bind-address=0.0.0.0
+lc-messages-dir = /usr/share/mysql
+skip-external-locking
+
+# Ajustes de desempenho (adapte conforme necessário)
+key_buffer_size         = 16M
+max_allowed_packet      = 16M
+thread_stack            = 192K
+thread_cache_size       = 8
+myisam_recover_options  = BACKUP
+query_cache_limit       = 1M
+query_cache_size        = 16M
+
+# Configurações de log
+log_error               = /var/log/mysql/error.log
+expire_logs_days        = 10
+max_binlog_size         = 100M
+
+# Configurações de caracteres
+character-set-server    = utf8mb4
+collation-server        = utf8mb4_general_ci

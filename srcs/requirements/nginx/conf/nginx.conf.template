@@ -1,0 +1,28 @@
+events {}
+
+http {
+
+	access_log /var/log/nginx/access.log;
+	error_log /var/log/nginx/error.log;
+
+	server {
+		listen ${NGINX_PORT} ssl;
+		listen [::]:${NGINX_PORT} ssl;
+		server_name ${WORDPRESS_DOMAIN};
+
+		ssl_certificate /etc/nginx/ssl/${WORDPRESS_DOMAIN}.crt;
+		ssl_certificate_key /etc/nginx/ssl/${WORDPRESS_DOMAIN}.key;
+
+		ssl_protocols TLSv1.3;
+
+		index index.php;
+		root /var/www/html/wordpress;
+
+		location ~ \.php$ {
+		    include fastcgi_params;
+		    fastcgi_pass ${WORDPRESS_HOST}:${WORDPRESS_PORT};
+		    fastcgi_index index.php;
+		    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+		}
+	}
+}

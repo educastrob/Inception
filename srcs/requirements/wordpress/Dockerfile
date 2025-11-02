@@ -1,34 +1,39 @@
-FROM debian:bullseye
+FROM alpine:3.21
 
-RUN apt-get update && apt-get -y install \
-	wget \
-	curl \
-	bash \
-	php \
-	php-cgi \
-	php-mysql \
-	php-fpm \
-	php-pdo \
-	php-gd php-cli \
-	php-mbstring \
-	redis \
-	php-redis \
-	&& rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    php83 \
+    php83-fpm \
+    php83-mysqli \
+    php83-curl \
+    php83-xml \
+    php83-zlib \
+    php83-mbstring \
+    php83-opcache \
+    php83-phar \
+    php83-pecl-redis \
+    php83-tokenizer \
+    php83-ctype \
+    envsubst \
+    wget
 
-RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
-  && chmod +x wp-cli.phar \
-  && mv wp-cli.phar /usr/local/bin/wp
+WORKDIR /var/www/html/wordpress
 
-COPY ./conf/www.conf /etc/php/7.3/fpm/pool.d/
+RUN addgroup -g 1000 inception \
+    && adduser -D -H -s /bin/ash -G www-data www-data \
+    && addgroup www-data inception \
+    && chown -R www-data:inception ./
 
-RUN mkdir /run/php
+RUN wget https://wordpress.org/latest.tar.gz \
+    && tar -xzf latest.tar.gz -C /var/www/html/
 
-COPY ./tools/create_wordpress.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/create_wordpress.sh
-ENTRYPOINT ["/usr/local/bin/create_wordpress.sh"]
+RUN wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O wp-cli \
+    && chmod +x wp-cli \
+    && mv wp-cli /bin
 
-WORKDIR /var/www/html/
+COPY ./conf/www.conf.template /etc/php83/php-fpm.d/
 
-EXPOSE 9000
+COPY ./tools/docker-entrypoint.sh /run/wordpress/entrypoint.sh
 
-CMD ["/usr/sbin/php-fpm7.3", "-F"]
+RUN chmod +x /run/wordpress/entrypoint.sh
+
+CMD ["/run/wordpress/entrypoint.sh"]
