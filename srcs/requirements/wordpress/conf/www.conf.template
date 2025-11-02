@@ -3,7 +3,7 @@
 user = www-data
 group = inception
 
-listen = ${WORDPRESS_PORT}
+listen = 0.0.0.0:${WORDPRESS_PORT}
 
 listen.owner = www-data
 listen.group = inception
