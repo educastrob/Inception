@@ -5,20 +5,28 @@ ARG MARIADB_PASSWORD
 ARG MARIADB_DATABASE
 ARG MARIADB_ROOT_PASSWORD
 
-# Install mariadb environment
-RUN apt update && apt upgrade -y && apt install mariadb-server -y && rm -rf /var/lib/apt/lists/*
-# Create the directory for MySQL process and set permissions
-RUN mkdir -p /var/run/mysqld \
-&& chown -R mysql:mysql /var/run/mysqld \
-&& chmod 777 /var/run/mysqld
-# Update configuration file
+# Export as environment variables for the script
+ENV MARIADB_USER=$MARIADB_USER
+ENV MARIADB_PASSWORD=$MARIADB_PASSWORD
+ENV MARIADB_DATABASE=$MARIADB_DATABASE
+ENV MARIADB_ROOT_PASSWORD=$MARIADB_ROOT_PASSWORD
+
+# Install mariadb
+RUN apt update && apt upgrade -y && apt install -y mariadb-server && rm -rf /var/lib/apt/lists/*
+
+# Create and set permissions for MySQL directories
+RUN mkdir -p /var/run/mysqld /var/lib/mysql && \
+    chown -R mysql:mysql /var/run/mysqld /var/lib/mysql && \
+    chmod 777 /var/run/mysqld
+
+# Copy configuration
 COPY /conf/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
-# Set permissions for the configuration file
 RUN chmod 644 /etc/mysql/mariadb.conf.d/50-server.cnf
-# Copy the script to configure MariaDB users and password
-COPY /tools/setup.sh /tmp/
+
+# Copy setup script
+COPY /tools/setup.sh /tmp/setup.sh
 RUN chmod +x /tmp/setup.sh
-# Expose port 3306 for MariaDB
+
 EXPOSE 3306
-# Set the entry point to run the configuration script
+
 ENTRYPOINT ["/tmp/setup.sh"]
