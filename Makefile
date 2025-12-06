@@ -1,92 +1,112 @@
-DOCKER_SHELL		:= /bin/ash
+DOCKER_COMPOSE=docker compose -f $(DOCKER_COMPOSE_FILE)
+DOCKER_COMPOSE_FILE = ./srcs/docker-compose.yml
+PROJECT_ENV_URL = https://raw.githubusercontent.com/mendes-jv/inception/refs/heads/main/srcs
+DOMAIN_NAME = edcastro.42.fr
 
-PROJECT_DIRECTORY	:= ./srcs
+all: install config build
 
-ifeq ($(shell find $(PROJECT_DIRECTORY) -name '.env' 2> /dev/null),)
-  $(error .env missing at $(PROJECT_DIRECTORY))
-else
-  include $(PROJECT_DIRECTORY)/.env
-endif
+verify_os:
+	@echo "Verifying OS(Debian/Ubuntu)..."
+	@if [ -r /etc/os-release ]; then \
+		. /etc/os-release; \
+		if [ "$$ID" = "debian" ] || [ "$$ID" = "ubuntu" ] || echo "$$ID_LIKE" | grep -qi debian; then \
+			echo "OK: $$PRETTY_NAME detectado."; \
+		else \
+			echo "Error: Sistem is not supported: $$PRETTY_NAME"; exit 1; \
+		fi; \
+	else \
+		echo "Error: /etc/os-release not found. Aborting."; exit 1; \
+	fi;
 
-QUIET				:= > /dev/null 2>&1
+install:
+	@$(MAKE) verify_os
 
-DOCKER_COMPOSE		:= $(shell \
-	if docker compose version $(QUIET); \
-		then \
-		echo 'docker compose'; \
-	elif docker-compose version $(QUIET); \
-		then \
-		echo 'docker-compose'; \
-	fi) --project-directory $(PROJECT_DIRECTORY)
+	-sudo apt remove -y docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin --purge
+	sudo apt autoremove -y
 
-VOLUMES				:= mariadb \
-					   wordpress
+	curl -fsSL https://get.docker.com -o get-docker.sh
+	sudo sh ./get-docker.sh && rm ./get-docker.sh
 
-VOLUMES_DIRECTORY	:= $(VOLUMES:%=/home/$(LOCAL_USER)/data/%)
+	sudo usermod -aG docker $$(whoami)
+	echo "%docker ALL=(ALL) NOPASSWD: /home/$$(whoami)/data/*" | sudo tee /etc/sudoers.d/docker
+	@echo ""
+	@echo "Docker installed successfully!"
+	@docker --version
+	@echo ""
+	@docker compose version
+	@echo ""
+	
+config:
+	@$(MAKE) verify_os
+	@echo "Getting the .env file..."
+	@if [ ! -f ./srcs/.env ]; then \
+		curl -fsSL "$(PROJECT_ENV_URL)/.env" -o ./srcs/.env; \
+		else echo ".env file already exists!"; \
+	fi
+	@echo ""
+	@echo ""
 
-SERVICES			:= mariadb \
-					   wordpress \
-					   nginx \
+	@echo "Add $(DOMAIN_NAME) in /etc/hosts..."
+		@if ! grep -q "$(DOMAIN_NAME)" /etc/hosts; then \
+		echo "127.0.0.1 $(DOMAIN_NAME)" | sudo tee -a /etc/hosts > /dev/null; \
+		else echo "$$(whoami).42.fr already exists in /etc/hosts!"; \
+	fi
+	
+	@if [ ! -d "/home/$$(whoami)/data/mysql" ]; then \
+		mkdir -p "/home/$$(whoami)/data/mysql"; \
+	else \
+		echo "Mysql data directory already exists!"; \
+	fi
+	@echo ""
+	@echo ""
 
-ifdef SERVICE
-	SERVICES 		:= $(SERVICE)
-endif
-
-all:
-	@mkdir -p $(VOLUMES_DIRECTORY)
-	@make up SERVICES="$(SERVICES)" --no-print-directory
-
-up:
-	@BUILDKIT=1 $(DOCKER_COMPOSE) up -d $(SERVICES)
-
-stop:
-	@$(DOCKER_COMPOSE) stop $(SERVICES)
-
-start:
-	@$(DOCKER_COMPOSE) start $(SERVICES)
-
-restart:
-	@$(DOCKER_COMPOSE) restart $(SERVICES)
-
-down:
-	@$(DOCKER_COMPOSE) down $(SERVICES)
-
-logs:
-	@$(DOCKER_COMPOSE) logs --follow $(SERVICES)
+	@if [ ! -d "/home/$$(whoami)/data/wordpress" ]; then \
+		mkdir -p "/home/$$(whoami)/data/wordpress"; \
+	else \
+		echo "Wordpress data directory already exists!"; \
+	fi
+	@echo ""
+	@echo ""
 
 build:
-	@$(DOCKER_COMPOSE) build --no-cache $(SERVICES)
-
-ps:
-	@$(DOCKER_COMPOSE) ps --all $(SERVICES)
-
-shell-%:
-	@if docker ps | grep -w $* $(QUIET); \
-	then \
-		docker exec -it $* $(DOCKER_SHELL); \
-	else \
-		echo "image 'shell-$*' not found"; \
-	fi
-
+	@$(DOCKER_COMPOSE) up --build -d
+kill:
+	@$(DOCKER_COMPOSE) kill
+down:
+	@$(DOCKER_COMPOSE) down
 clean:
-	@if docker image ls | grep $(COMPOSE_PROJECT_NAME) $(QUIET); \
-	then \
-		$(DOCKER_COMPOSE) down --timeout 1 --rmi local; \
-	fi
-	@if docker network ls | grep $(COMPOSE_PROJECT_NAME) $(QUIET); \
-	then \
-		$(DOCKER_COMPOSE) down --timeout 1 --rmi local; \
-	fi
+	@containers_before=$$(docker ps -aq | wc -l); \
+	echo "Number of containers in execution: $$containers_before";
+	@$(DOCKER_COMPOSE) down -v > /dev/null
 
 fclean: clean
-	@if docker volume ls | grep $(COMPOSE_PROJECT_NAME) $(QUIET); \
-	then \
-		$(DOCKER_COMPOSE) down --timeout 1 --volumes;\
+	@sudo sed -i "/$(DOMAIN_NAME)/d" /etc/hosts;
+	@images_before=$$(docker images -q | wc -l); \
+	echo "Number of existing images: $$images_before";
+	@if [ -d "$(HOME)/data" ]; then \
+		echo "Removing $(HOME)/data..."; \
+		sudo rm -rf "$(HOME)/data"; \
+	else \
+		echo "$(HOME)/data not existent. Skipping remove."; \
 	fi
+	@if [ -f srcs/.env ]; then \
+		echo "Removing .env"; \
+		sudo rm -rf srcs/.env; \
+	else \
+		echo "srcs/.env files not existent"; \
+	fi
+	@echo "Pruning Docker system..."
+	@docker system prune -a -f >/dev/null
+	@containers_after=$$(docker ps -aq | wc -l); \
+	images_after=$$(docker images -q | wc -l); \
+	echo "Number of contained that remained: $$containers_after"; \
+	echo "Number of images that remained: $$images_after"
 
-re: fclean all
+uninstall:
+	sudo apt remove -y docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin --purge
+	sudo apt autoremove -y
+	sudo rm -r /etc/sudoers.d/docker || true
 
-prune:
-	@docker system prune
+restart: clean build
 
-.PHONY: all up stop start restart down logs build ps shell-% clean fclean re prune
+.PHONY: build clean fclean down install kill restart uninstall verify_os config all

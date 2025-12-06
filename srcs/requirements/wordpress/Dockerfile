@@ -1,42 +1,34 @@
-FROM alpine:3.21
+FROM debian:oldstable
 
-RUN apk add --no-cache \
-    php83 \
-    php83-fpm \
-    php83-mysqli \
-    php83-curl \
-    php83-xml \
-    php83-zlib \
-    php83-mbstring \
-    php83-opcache \
-    php83-phar \
-    php83-pecl-redis \
-    php83-tokenizer \
-    php83-ctype \
-    envsubst \
-    netcat-openbsd \
-    wget
+RUN apt-get update && apt-get upgrade -y && apt install php\
+    php-fpm php8.2-fpm php-mysql curl\
+    php-common php-cli php-common php-redis \
+    php-opcache php-readline \
+    php-mbstring php-xml redis php-redis \
+    php-gd php-curl mariadb-client sendmail \
+    libfcgi-bin -y && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /var/www/html/wordpress
+# Configura o PHP-FPM para escutar na rede
+RUN mkdir -p /run/php && \
+    sed -i "s/listen = \/run\/php\/php8.2-fpm.sock/listen = 0.0.0.0:9000/" /etc/php/8.2/fpm/pool.d/www.conf
 
-RUN addgroup -g 1001 inception \
-    && adduser -D -s /bin/ash -u 1001 -G inception www-data
+# Define o diretório de trabalho padrão
+WORKDIR /var/www/html
 
-RUN wget https://wordpress.org/latest.tar.gz \
-    && tar -xzf latest.tar.gz --strip-components=1 \
-    && rm latest.tar.gz
+# Instala o wp-cli
+RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
+    chmod +x wp-cli.phar && \
+    mv wp-cli.phar /usr/local/bin/wp && \
+    curl -O https://wordpress.org/latest.tar.gz && \
+    tar -xvzf latest.tar.gz --strip-components=1 && \
+    rm -rf latest.tar.gz
 
-RUN wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O wp-cli \
-    && chmod +x wp-cli \
-    && mv wp-cli /bin/wp-cli
+# Copia o script de inicialização
+COPY ./tools/installwp.sh /tmp/installwp.sh
+RUN chmod +x /tmp/installwp.sh
 
-RUN mkdir -p /run/wordpress
-
-COPY ./conf/www.conf.template /etc/php83/php-fpm.d/
-COPY ./tools/docker-entrypoint.sh /run/wordpress/entrypoint.sh
-
-RUN chmod +x /run/wordpress/entrypoint.sh
-
+# Expõe a porta do PHP-FPM
 EXPOSE 9000
 
-CMD ["/run/wordpress/entrypoint.sh"]
+# Define o ponto de entrada para executar o script de configuração
+CMD ["/tmp/installwp.sh"]

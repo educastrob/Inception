@@ -1,123 +1,84 @@
-networks:
-  inception:
-    name: ${COMPOSE_PROJECT_NAME}
-
-secrets:
-  mariadb_user_password:
-    file: ../secrets/mariadb_user_password.txt
-
-  mariadb_root_password:
-    file: ../secrets/mariadb_root_password.txt
-
-  wordpress_user_password:
-    file: ../secrets/wordpress_user_password.txt
-
-  wordpress_root_password:
-    file: ../secrets/wordpress_root_password.txt
-
 services:
+
+####### MARIADB ########
   mariadb:
-    container_name: mariadb
-    expose:
-      - ${MARIADB_PORT}
-    healthcheck:
-      test: [
-        "CMD-SHELL", 
-        "mariadb-admin ping \
-        -h$MARIADB_HOST \
-        -P$MARIADB_PORT \
-        -u$MARIADB_USER \
-        -p$$(cat /run/secrets/mariadb_user_password) \
-        --silent"
-      ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
     build:
       context: ./requirements/mariadb
       dockerfile: Dockerfile
-    environment:
-      MARIADB_HOST: ${MARIADB_HOST}
-      MARIADB_PORT: ${MARIADB_PORT}
-      MARIADB_DATABASE: ${MARIADB_DATABASE}
-      MARIADB_USER: ${MARIADB_USER}
-    networks:
-      - ${COMPOSE_PROJECT_NAME}
-    volumes:
-      - mariadb_data:/var/lib/mysql
-    secrets:
-      - mariadb_user_password
-      - mariadb_root_password
-    restart: on-failure
-
-  wordpress:
-    container_name: wordpress
+    container_name: mariadb
+    image: mariadb
+    env_file:
+      - .env
     expose:
-      - ${WORDPRESS_PORT}
-    build:
-      context: ./requirements/wordpress
-      dockerfile: Dockerfile
-    environment:
-      LOCAL_USER: ${LOCAL_USER}
-      MARIADB_HOST: ${MARIADB_HOST}
-      MARIADB_PORT: ${MARIADB_PORT}
-      MARIADB_DATABASE: ${MARIADB_DATABASE}
-      MARIADB_USER: ${MARIADB_USER}
-      WORDPRESS_DOMAIN: ${WORDPRESS_DOMAIN}
-      WORDPRESS_PORT: ${WORDPRESS_PORT}
-      WORDPRESS_USER: ${WORDPRESS_USER}
-      WORDPRESS_USER_EMAIL: ${WORDPRESS_USER_EMAIL}
-      WORDPRESS_ROOT: ${WORDPRESS_ROOT}
-      WORDPRESS_ROOT_EMAIL: ${WORDPRESS_ROOT_EMAIL}
-    secrets:
-      - mariadb_user_password
-      - wordpress_user_password
-      - wordpress_root_password
-    networks:
-      - ${COMPOSE_PROJECT_NAME}
+      - "3306"
     volumes:
-      - wordpress_data:/var/www/html/wordpress
-    restart: on-failure
+      - db:/var/lib/mysql
+    networks:
+      - inception_net
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
+####### WORDPRESS ########
+  wordpress:
+    build: ./requirements/wordpress
+    container_name: wordpress
+    image: wordpress
+    volumes:
+      - wp:/var/www/html
     depends_on:
       mariadb:
         condition: service_healthy
-
-  nginx:
-    container_name: nginx
-    expose:
-      - ${NGINX_PORT}
-    build:
-      context: ./requirements/nginx
-      dockerfile: Dockerfile
-    environment:
-      NGINX_PORT: ${NGINX_PORT}
-      WORDPRESS_DOMAIN: ${WORDPRESS_DOMAIN}
-      WORDPRESS_HOST: ${WORDPRESS_HOST}
-      WORDPRESS_PORT: ${WORDPRESS_PORT}
+    env_file:
+      - .env
     networks:
-      - ${COMPOSE_PROJECT_NAME}
-    ports:
-      - ${NGINX_PORT}:${NGINX_PORT}
-    volumes:
-      - wordpress_data:/var/www/html/wordpress:ro
+      - inception_net
+    expose:
+      - "9000"
     restart: on-failure
+    healthcheck:
+      test: ["CMD", "cgi-fcgi", "-bind", "-connect", "localhost:9000"]
+      interval: 10s
+      timeout: 40s
+      retries: 5
+      start_period: 30s
+
+####### NGINX ########
+  nginx:
+    build: ./requirements/nginx
+    container_name: nginx
+    image: nginx
+    volumes:
+      - wp:/var/www/html
+    ports:
+      - 443:443
+    networks:
+      - inception_net
     depends_on:
       wordpress:
-        condition: service_started
+        condition: service_healthy
+    restart: on-failure
 
-
+####### VOLUMES ########
 volumes:
-  mariadb_data:
+  db:
     driver: local
     driver_opts:
       type: none
-      device: /home/${LOCAL_USER}/data/mariadb
       o: bind
+      device: ${HOME}/data/mysql
+  wp:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/data/wordpress
 
-  wordpress_data:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/${LOCAL_USER}/data/wordpress
-      o: bind
+####### NETWORKS ########
+networks:
+  inception_net:
+    driver: bridge

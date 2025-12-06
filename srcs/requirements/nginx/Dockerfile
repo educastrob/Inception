@@ -1,19 +1,15 @@
-FROM alpine:3.21
+FROM debian:oldstable
 
-RUN apk add --no-cache \
-    nginx \
-    openssl \
-    envsubst
+#Install NGINX enviroment
+RUN apt update && apt upgrade -y && apt install nginx openssl curl -y && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /run/nginx
+RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+-subj "/C=BR/ST=SP/L=Sao Paulo/O=42FR/OU=42SP/CN=edcastro.42.fr" \
+-keyout /etc/ssl/inception.key \
+-out /etc/ssl/inception.crt
 
-RUN addgroup -g 1000 inception \
-    && addgroup nginx inception
 
-COPY ./conf/nginx.conf.template /etc/nginx/
+COPY conf/my_wp.conf /etc/nginx/conf.d/
 
-COPY ./tools/docker-entrypoint.sh /run/nginx/entrypoint.sh
-
-RUN chmod +x /run/nginx/entrypoint.sh
-
-ENTRYPOINT ["/run/nginx/entrypoint.sh"]
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]
