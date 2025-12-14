@@ -1,34 +1,37 @@
 FROM debian:oldstable
 
-RUN apt-get update && apt-get upgrade -y && apt install php\
-    php-fpm php8.2-fpm php-mysql curl\
-    php-common php-cli php-common php-redis \
-    php-opcache php-readline \
-    php-mbstring php-xml redis php-redis \
-    php-gd php-curl mariadb-client sendmail \
-    libfcgi-bin -y && rm -rf /var/lib/apt/lists/*
+ENV ADMIN_NAME=${ADMIN_NAME}
+ENV ADMIN_PASSWORD=${ADMIN_PASSWORD}
+ENV DATABASE_HOST=${DATABASE_HOST}
 
-# Configura o PHP-FPM para escutar na rede
-RUN mkdir -p /run/php && \
-    sed -i "s/listen = \/run\/php\/php8.2-fpm.sock/listen = 0.0.0.0:9000/" /etc/php/8.2/fpm/pool.d/www.conf
-
-# Define o diretório de trabalho padrão
+# Setting the working directory to /var/www/html where WordPress will be installed
 WORKDIR /var/www/html
 
-# Instala o wp-cli
-RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
-    chmod +x wp-cli.phar && \
-    mv wp-cli.phar /usr/local/bin/wp && \
-    curl -O https://wordpress.org/latest.tar.gz && \
-    tar -xvzf latest.tar.gz --strip-components=1 && \
-    rm -rf latest.tar.gz
+# Install necessary packages
+RUN apt update -y && apt upgrade -y \
+    && apt install -y php7.4 php-fpm php-mysql mariadb-client wget curl -y \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copia o script de inicialização
-COPY ./tools/installwp.sh /tmp/installwp.sh
-RUN chmod +x /tmp/installwp.sh
+# wp-cli plugin to simplify the connection and setup of WordPress with the MariaDB database.
+RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
 
-# Expõe a porta do PHP-FPM
-EXPOSE 9000
+RUN chmod +x wp-cli.phar && mv wp-cli.phar /usr/local/bin/wp
 
-# Define o ponto de entrada para executar o script de configuração
-CMD ["/tmp/installwp.sh"]
+# Change PHP-FPM listen configuration
+RUN echo "listen = 0.0.0.0:9000" >> /etc/php/7.4/fpm/pool.d/www.conf
+
+# Create /run/php directory for the socket
+RUN mkdir -p /run/php
+
+# Download and extract WordPress
+RUN wget https://wordpress.org/latest.tar.gz -O latest.tar.gz \
+    && tar -xvzf latest.tar.gz \
+    && mv wordpress/* /var/www/html/ \
+    && rm -rf wordpress latest.tar.gz
+
+COPY /conf/run.sh /tmp/wp_setup.sh
+
+RUN chmod 777 /tmp/wp_setup.sh
+
+# Start PHP-FPM
+CMD ["/tmp/wp_setup.sh"]

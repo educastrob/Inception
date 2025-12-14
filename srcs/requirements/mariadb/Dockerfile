@@ -1,32 +1,30 @@
+# Use an oldstable Debian base image
 FROM debian:oldstable
 
-ARG MARIADB_USER
-ARG MARIADB_PASSWORD
-ARG MARIADB_DATABASE
-ARG MARIADB_ROOT_PASSWORD
+# Define environment variables that will be passed during the build
+ARG ADMIN_NAME
+ARG ADMIN_PASSWORD
+ARG DATABASE_NAME
+ARG ROOT_PASSWORD
 
-# Export as environment variables for the script
-ENV MARIADB_USER=$MARIADB_USER
-ENV MARIADB_PASSWORD=$MARIADB_PASSWORD
-ENV MARIADB_DATABASE=$MARIADB_DATABASE
-ENV MARIADB_ROOT_PASSWORD=$MARIADB_ROOT_PASSWORD
+# Update the system and install the MariaDB server, cleaning up package cache
+RUN apt update -y && apt upgrade -y \
+    && apt install mariadb-server -y \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install mariadb
-RUN apt update && apt upgrade -y && apt install -y mariadb-server && rm -rf /var/lib/apt/lists/*
+# Create the directory for MySQL process and set permissions
+    RUN mkdir -p /var/run/mysqld \
+	&& chown -R mysql:mysql /var/run/mysqld \
+	&& chmod 777 /var/run/mysqld
 
-# Create and set permissions for MySQL directories
-RUN mkdir -p /var/run/mysqld /var/lib/mysql && \
-    chown -R mysql:mysql /var/run/mysqld /var/lib/mysql && \
-    chmod 777 /var/run/mysqld
+# Copy the MariaDB configuration file into the container
+COPY cnf/my.cnf /etc/mysql/my.cnf
 
-# Copy configuration
-COPY /conf/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
-RUN chmod 644 /etc/mysql/mariadb.conf.d/50-server.cnf
+# Copy the initialization script into the container
+COPY conf/run.sh /tmp/run.sh
 
-# Copy setup script
-COPY /tools/setup.sh /tmp/setup.sh
-RUN chmod +x /tmp/setup.sh
+# Change script permissions and execute it to set up the database
+RUN chmod 777 /tmp/run.sh && bash /tmp/run.sh
 
-EXPOSE 3306
-
-ENTRYPOINT ["/tmp/setup.sh"]
+# Command to safely start the MariaDB service
+CMD ["mysqld_safe"]
