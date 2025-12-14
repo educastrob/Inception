@@ -1,86 +1,81 @@
-# Sets the version of Docker Compose
-version: '3.8'
-
-############## NETWORKS ##############
-
-# Network to connect all the containers in the project
-networks:
-  inception:
-    name: inception
-
-############## VOLUMES ################
-
-# Definition of persistent volumes, ensuring that data is not lost when containers are restarted
-volumes:
-  wordpress_data:
-    name: wordpress_data
-    driver_opts:
-      o: bind
-      type: none
-      device: /home/edcastro/data/wordpress
-    
-  mariadb_data:
-    name: mariadb_data
-    driver_opts:
-      o: bind
-      type: none
-      device: /home/edcastro/data/mariadb
-
-##############  SERVICES ##############
-
-# Application services, including the MariaDB database, WordPress and the Nginx server
 services:
   mariadb:
-    image: mariadb:42project
+    build: ./requirements/mariadb
     container_name: mariadb
-    env_file:
-      - .env
-    build: 
-      context: requirements/mariadb
-      args:
-        - ADMIN_NAME=${ADMIN_NAME}
-        - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-        - DATABASE_NAME=${DATABASE_NAME}
-        - ROOT_PASSWORD=${ROOT_PASSWORD}
+    restart: always
+    env_file: .env
     environment:
-      - ADMIN_NAME
-      - ADMIN_PASSWORD
-      - DATABASE_NAME
-      - ROOT_PASSWORD
+      - MARIADB_HOST
+      - MARIADB_ROOT
+      - MARIADB_ROOT_PASSWORD
+      - MARIADB_DATABASE
+      - MARIADB_USER
+      - MARIADB_PASSWORD
     volumes:
       - mariadb_data:/var/lib/mysql
     networks:
-      - inception
-    expose:
-      - 3306
-    restart: on-failure
-  wordpress:
-    depends_on:
-      - mariadb
-    image: wordpress:42project
-    container_name: wordpress
-    build:
-      context: ./requirements/wordpress/
-    expose:
-      - 9000
+      - inception-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
+  nginx:
+    build: ./requirements/nginx
+    container_name: nginx
+    restart: always
+    env_file: .env
+    environment:
+      - DOMAIN_NAME
     volumes:
       - wordpress_data:/var/www/html
     networks:
-      - inception
-    env_file:
-      - .env
-    restart: on-failure
-  nginx:
+      - inception-network
     depends_on:
       - wordpress
-    image: nginx:42project
-    container_name: nginx
-    build:
-      context: ./requirements/nginx/
     ports:
-      - "443:443"
+      - 443:443
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://edcastro.42.fr"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  wordpress:
+    build: ./requirements/wordpress
+    container_name: wordpress
+    restart: always
+    env_file: .env
     volumes:
       - wordpress_data:/var/www/html
     networks:
-      - inception
-    restart: always
+      - inception-network
+    depends_on:
+      - mariadb
+    expose:
+      - "9000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://edcastro.42.fr"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  mariadb_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PATH_TO_VOLUME}/mariadb
+  wordpress_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PATH_TO_VOLUME}/wordpress
+
+networks:
+  inception-network:
+    driver: bridge

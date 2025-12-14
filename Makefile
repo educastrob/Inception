@@ -1,72 +1,54 @@
-USER = edcastro
-WORDPRESS_DIRECTORY =/home/$(USER)/data/wordpress
-MARIADB_DIRECTORY = /home/$(USER)/data/mariadb
-COMPOSE_PATH=./srcs/docker-compose.yml
-DOCKER_EXEC=docker-compose -f $(COMPOSE_PATH)
+LOGIN := edcastro
+DOMAIN_NAME := $(LOGIN).42.fr
+PATH_TO_VOLUME := /home/$(LOGIN)/data
+DOCKER_COMPOSE = sudo docker compose -f ./srcs/docker-compose.yml
 
-all: config up
+export PATH_TO_VOLUME
 
-# setup to prepare the environment before the containers go up
+all: build
 
-config:
+install:
+	curl -fsSL https://get.docker.com -o get-docker.sh
+	sudo sh ./get-docker.sh && rm ./get-docker.sh
 
-	@echo "Getting the .env file..."
-	@if [ ! -f ./srcs/.env ]; then \
-		wget -P ./srcs https://raw.githubusercontent.com/educastrob/Inception/master/srcs/.env; \
-		else echo ".env file already exists!"; \
-	fi
-
-	@echo "Add edcastro.42.fr in /etc/hosts..."
-		@if ! grep -q "edcastro.42.fr" /etc/hosts; then \
-		echo "127.0.0.1 $(USER).42.fr" | sudo tee -a /etc/hosts > /dev/null; \
-		else echo "edcastro.42.fr already exists in /etc/hosts!"; \
-	fi
-
-	@echo "Creating the data directories..."
-	@if [ ! -d "$(MARIADB_DIRECTORY)" ]; then \
-		sudo mkdir -p $(MARIADB_DIRECTORY); \
-		else echo "MariaDB data directory already exists!"; \
-	fi
-
-	@if [ ! -d "$(WORDPRESS_DIRECTORY)" ]; then \
-		sudo mkdir -p $(WORDPRESS_DIRECTORY); \
-		else echo "Wordpress data directory already exists!"; \
-	fi
-
-## rules to manipulate containers
+	sudo usermod -aG docker $$(whoami)
+	echo "%docker ALL=(ALL) NOPASSWD: /home/$$(whoami)/data/*" | sudo tee /etc/sudoers.d/docker
+	@echo ""
+	@docker --version
+	@echo ""
+	@docker compose version
+	@echo ""
 
 build:
-	@echo "Building the containers..."
-	$(DOCKER_EXEC) build
+	sudo mkdir -p ${PATH_TO_VOLUME}/mariadb
+	sudo mkdir -p ${PATH_TO_VOLUME}/wordpress
 
-up: build
-	@echo "Starting the containers..."
-	$(DOCKER_EXEC) up -d
+	@echo "Add $(DOMAIN_NAME) in /etc/hosts..."
+		@if ! grep -q "$(DOMAIN_NAME)" /etc/hosts; then \
+		echo "127.0.0.1 $(DOMAIN_NAME)" | sudo tee -a /etc/hosts > /dev/null; \
+		else echo "$(DOMAIN_NAME).42.fr already exists in /etc/hosts!"; \
+	fi
+	@$(DOCKER_COMPOSE) up --build -d
+
+kill:
+	@$(DOCKER_COMPOSE) kill
 
 down:
-	@echo "Stopping the containers..."
-	$(DOCKER_EXEC) down
-
-ps:
-	@echo "Showing the containers..."
-	$(DOCKER_EXEC) ps
-
-## rules to clean the environment and remove the containers
+	@$(DOCKER_COMPOSE) down
 
 clean:
-	@echo "Cleaning the containers..."
-	$(DOCKER_EXEC) down --rmi all --volumes
+	@containers_before=$$(docker ps -aq | wc -l); \
+	echo "Number of containers in execution: $$containers_before";
+	@$(DOCKER_COMPOSE) down -v > /dev/null
+	sudo rm -rf ${PATH_TO_VOLUME}/mariadb;
+	sudo rm -rf ${PATH_TO_VOLUME}/wordpress;
+	@echo "Removing $(DOMAIN_NAME) from /etc/hosts...";
+    
+	@if grep -q "$(DOMAIN_NAME)" /etc/hosts; then \
+        sudo sed -i "/$(DOMAIN_NAME)/d" /etc/hosts; \
+    else echo "$(DOMAIN_NAME) not found in /etc/hosts."; \
+    fi
 
-fclean: clean
-	@echo "Removing the .env file..."
-	rm ./srcs/.env
-	sudo sed -i '/edcastro\.42\.fr/d' /etc/hosts
-	@echo "Removing the data directories..."
-	@if [ -d "/home/edcastro/data" ]; then \
-		sudo rm -rf /home/edcastro/data; \
-	fi
-	docker system prune -a --volumes -f
+restart: clean build
 
-re: fclean all
-
-.PHONY: all config build up down ps prune clean fclean re
+.PHONY: build clean down kill restart
