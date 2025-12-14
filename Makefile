@@ -2,6 +2,7 @@ LOGIN := edcastro
 DOMAIN_NAME := $(LOGIN).42.fr
 PATH_TO_VOLUME := /home/$(LOGIN)/data
 DOCKER_COMPOSE = sudo docker compose -f ./srcs/docker-compose.yml
+PROJECT_ENV_URL = https://raw.githubusercontent.com/educastrob/inception/refs/heads/main/srcs
 
 export PATH_TO_VOLUME
 
@@ -20,6 +21,14 @@ install:
 	@echo ""
 
 build:
+	@echo "Getting the .env file..."
+	@if [ ! -f ./srcs/.env ]; then \
+		curl -fsSL "$(PROJECT_ENV_URL)/.env" -o ./srcs/.env; \
+		else echo ".env file already exists!"; \
+	fi
+	@echo ""
+	@echo ""
+
 	sudo mkdir -p ${PATH_TO_VOLUME}/mariadb
 	sudo mkdir -p ${PATH_TO_VOLUME}/wordpress
 
